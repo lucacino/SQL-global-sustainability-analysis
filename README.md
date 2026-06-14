@@ -8,7 +8,7 @@
 
 ## Obiettivo / Objective
 
-**IT:** Trasformare dati grezzi eterogenei in insight operativi per guidare l'allocazione delle risorse di un'organizzazione no-profit focalizzata sullo sviluppo sostenibile globale. L'analisi risponde a tre domande strategiche:
+**IT:** Trasformare dati eterogenei in insight operativi per guidare l'allocazione delle risorse di un'organizzazione no-profit focalizzata sullo sviluppo sostenibile globale. L'analisi risponde a tre domande strategiche:
 
 1. Quali paesi presentano le maggiori criticità ambientali?
 2. Esistono inefficienze tra disponibilità economica e risultati sanitari?
@@ -22,8 +22,8 @@
 
 | Dataset | Descrizione | Source |
 |---|---|---|
-| `Global_Country_Information` | Indicatori economici, sanitari, demografici, ambientali — 195 paesi, 2023 | Kaggle |
-| `Missing_Migrants` | Migranti morti o dispersi a livello globale, 2023 | IOM Missing Migrants Project |
+| `Global_Country_Information` | Indicatori economici, sanitari, demografici, ambientali — 195 paesi, 2023 | [Kaggle](https://www.kaggle.com/datasets/nelgiriyewithana/countries-of-the-world-2023) |
+| `Missing_Migrants` | Migranti morti o dispersi a livello globale, 2023 | [Kaggle](https://www.kaggle.com/datasets/nelgiriyewithana/global-missing-migrants-dataset) |
 
 I due dataset sono stati uniti tramite `JOIN ON Country` per arricchire l'analisi migratoria con dati economici.
 
@@ -31,13 +31,17 @@ I due dataset sono stati uniti tramite `JOIN ON Country` per arricchire l'analis
 
 ## Metodologia / Methodology
 
-Analisi condotta in **PostgreSQL**, strutturata in 4 filoni tematici:
+Analisi condotta in **PostgreSQL**, strutturata in 4 filoni tematici. Ogni query è preceduta da un commento che descrive obiettivo e risultato atteso.
 
-### 1. Analisi Ambientale — Stress CO₂ vs Copertura Forestale
-
-Indicatore costruito: `CO2_Emission / Forested_Area` per identificare i paesi con minore capacità di assorbimento naturale.
+### 1. Stress Ambientale — CO₂ vs Copertura Forestale
 
 ```sql
+-- Obiettivo: Identificare i paesi con elevato livello di emissioni di CO2
+-- ma con una bassa copertura forestale, condizione che riduce
+-- la capacità di assorbimento delle emissioni.
+-- Risultato atteso: Una lista di paesi prioritari per programmi
+-- di riforestazione o transizione energetica.
+
 SELECT
     Country,
     Co2_Emission,
@@ -52,10 +56,20 @@ LIMIT 10;
 
 ### 2. Efficienza Sanitaria — PIL Elevato vs Aspettativa di Vita
 
-Paesi con PIL superiore alla media globale ma aspettativa di vita inferiore alla media → inefficienze sistemiche.
-
 ```sql
-SELECT Country, GDP, Life_Expectancy, Physicians_Per_Thousand
+-- Obiettivo: Individuare paesi con livelli economici medio-alti
+-- ma risultati sanitari inferiori alla media, suggerendo
+-- inefficienze strutturali dove un intervento sanitario
+-- potrebbe avere alto impatto marginale.
+-- Risultato atteso: Identificazione di paesi con alto PIL
+-- ma bassa aspettativa di vita.
+
+SELECT
+    Country,
+    GDP,
+    Life_Expectancy,
+    Physicians_Per_Thousand,
+    Gross_Tertiary_Education_Enrollment
 FROM Global_Country_Information
 WHERE GDP IS NOT NULL AND Life_Expectancy IS NOT NULL
   AND GDP > (SELECT AVG(GDP) FROM Global_Country_Information)
@@ -66,7 +80,16 @@ ORDER BY GDP DESC;
 ### 3. Fragilità Sociale — Mortalità Infantile & Istruzione
 
 ```sql
-SELECT Country, Infant_Mortality, Gross_Tertiary_Education_Enrollment
+-- Obiettivo: Confrontare mortalità infantile e accesso
+-- all'istruzione per identificare paesi dove interventi
+-- integrati (sanità + educazione) possono essere più efficaci.
+-- Risultato atteso: Evidenziare paesi con alta mortalità
+-- infantile e basso livello di istruzione terziaria.
+
+SELECT
+    Country,
+    Infant_Mortality,
+    Gross_Tertiary_Education_Enrollment
 FROM Global_Country_Information
 WHERE Infant_Mortality IS NOT NULL
   AND Gross_Tertiary_Education_Enrollment IS NOT NULL
@@ -74,12 +97,19 @@ ORDER BY Infant_Mortality DESC
 LIMIT 10;
 ```
 
-### 4. Migrazione — Vittime per Milione di Abitanti (JOIN tra dataset)
+### 4. Migrazione — Vittime per Milione di Abitanti (JOIN)
 
 ```sql
+-- Obiettivo: Analizzare la relazione tra condizioni economiche
+-- del paese di origine e numero di migranti morti o dispersi,
+-- normalizzando i dati per dimensione del paese.
+-- Risultato atteso: Identificare paesi dove la fragilità
+-- economica è associata a esiti migratori particolarmente critici.
+
 SELECT
     GCI.Country,
     GCI.GDP,
+    GCI.Unemployment_Rate,
     GCI.Population,
     SUM(MM.Total_Dead_and_Missing) AS Vittime_totali,
     (SUM(MM.Total_Dead_and_Missing)::NUMERIC / NULLIF(GCI.Population, 0)) * 1000000
@@ -95,21 +125,21 @@ ORDER BY Vittime_per_milione_abitanti DESC;
 
 ## Risultati Chiave / Key Results
 
-### Stress Ambientale (CO₂ / Area Forestale)
+### Stress Ambientale
 | Paese | CO₂ Emissioni | Copertura Forestale |
 |---|---|---|
 | Egitto | 238.56 | 0.10% |
 | Arabia Saudita | 563.45 | 0.50% |
 | Algeria | 150.01 | 0.80% |
 
-### Inefficienza Sanitaria (PIL alto, aspettativa di vita bassa)
+### Inefficienza Sanitaria
 | Paese | PIL | Aspettativa di Vita |
 |---|---|---|
 | Nigeria | ~$448 mld | 54.3 anni |
 | Sudafrica | ~$351 mld | 63.9 anni |
 | India | ~$2.6 tln | 69.4 anni |
 
-### Esiti Migratori (Vittime per milione di abitanti, 2023)
+### Fragilità Migratoria (vittime per milione di abitanti, 2023)
 | Paese | Vittime per milione |
 |---|---|
 | Myanmar | 3.33 |
@@ -120,20 +150,17 @@ ORDER BY Vittime_per_milione_abitanti DESC;
 
 ## Raccomandazioni Strategiche / Strategic Recommendations
 
-- **Ambiente:** concentrare gli interventi di riforestazione in Egitto, Arabia Saudita e Algeria
-- **Sanità:** programmi sanitari mirati in Nigeria, Sudafrica e India — alto PIL ma basso impatto sulla salute
+- **Ambiente:** concentrare interventi di riforestazione e transizione energetica in Egitto, Arabia Saudita e Algeria
+- **Sanità:** programmi mirati in Nigeria, Sudafrica e India — alto PIL, basso impatto sulla salute
 - **Migrazione:** interventi strutturali sulle cause economiche in Myanmar, Haiti e Afghanistan
 
 ---
 
-## Stack Tecnologico / Tech Stack
+## Tech Stack
 
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SQL-blue?logo=postgresql)
-![SQL](https://img.shields.io/badge/SQL-Advanced-lightgrey)
-
-- **Database:** PostgreSQL
-- **Tecniche SQL:** JOIN, Subquery, Aggregazioni, NULLIF, normalizzazione per popolazione
-- **Ambiente:** pgAdmin / SQL editor
+- Database: PostgreSQL
+- Tecniche SQL: JOIN, Subquery, Aggregazioni, NULLIF, normalizzazione per popolazione
+- Ambiente: pgAdmin
 
 ---
 
@@ -150,14 +177,6 @@ sql-global-sustainability-analysis/
 └── presentation/
     └── Progetto_SQL_di_Luca_Cino.pdf
 ```
-
----
-
-## Come Riprodurre / How to Run
-
-1. Importare i dataset in PostgreSQL (link nelle query)
-2. Eseguire i file `.sql` in ordine numerico
-3. I risultati di ogni query corrispondono a un'area tematica dell'analisi
 
 ---
 
