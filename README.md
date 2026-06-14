@@ -1,4 +1,4 @@
-# SQL — Global Sustainability Analysis 🌍
+# SQL — Global Sustainability Analysis
 
 > Analisi comparativa multi-dimensionale su dati economici, sanitari, ambientali e migratori di 195 paesi (2023) per supportare le decisioni strategiche di un'organizzazione no-profit internazionale.
 
